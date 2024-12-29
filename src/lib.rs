@@ -4,10 +4,45 @@ pub use serial;
 use lin_bus::{driver, PID};
 use serial::{SerialPort, SystemPort};
 use std::io::{Read, Write};
+use std::path::Path;
 use std::thread::sleep;
 use std::time::Duration;
 
 pub struct SerialLin(pub SystemPort);
+
+impl SerialLin {
+    pub fn new(path: &str) -> Result<Self, SerialError> {
+        let port = SystemPort::open(Path::new(path)).unwrap();
+
+        return Ok(SerialLin(port));
+    }
+
+    pub fn send_break(&mut self) -> Result<(), SerialError> {
+        self.0.reconfigure(&|settings| {
+            settings.set_baud_rate(serial::Baud4800)?;
+            settings.set_char_size(serial::Bits7);
+            settings.set_parity(serial::ParityNone);
+            settings.set_stop_bits(serial::Stop1);
+            settings.set_flow_control(serial::FlowNone);
+            Ok(())
+        })?;
+
+        self.0.write_all(&[0])?;
+        // wait a short time before switching baudrate again, otherwise the zero byte won't be sent
+        // with the lower baudrate
+        sleep(Duration::from_millis(1));
+
+        self.0.reconfigure(&|settings| {
+            settings.set_baud_rate(serial::Baud9600)?;
+            settings.set_char_size(serial::Bits8);
+            settings.set_parity(serial::ParityNone);
+            settings.set_stop_bits(serial::Stop1);
+            settings.set_flow_control(serial::FlowNone);
+            Ok(())
+        })?;
+        Ok(())
+    }
+}
 
 #[derive(Debug)]
 pub enum SerialError {
@@ -49,10 +84,10 @@ impl driver::Master for SerialLin {
     type Error = SerialError;
 
     fn send_wakeup(&mut self) -> Result<(), SerialError> {
-        self.0.set_timeout(Duration::from_millis(1000))?;
+        // self.0.set_timeout(Duration::from_millis(10000))?;
 
         self.0.reconfigure(&|settings| {
-            settings.set_baud_rate(serial::Baud9600)?;
+            settings.set_baud_rate(serial::Baud4800)?;
             settings.set_char_size(serial::Bits7);
             settings.set_parity(serial::ParityNone);
             settings.set_stop_bits(serial::Stop1);
@@ -61,53 +96,32 @@ impl driver::Master for SerialLin {
         })?;
 
         self.0.write_all(&[0])?;
-        let mut buf = [0; 1];
-        self.0.read_exact(&mut buf)?;
+        // let mut buf = [0; 1];
+        // self.0.read_exact(&mut buf)?;
 
-        if buf[0] != 0 {
-            Err(SerialError::LinError(driver::Error::PhysicalBus))
-        } else {
+        // if buf[0] != 0 {
+        //     Err(SerialError::LinError(driver::Error::PhysicalBus))
+        // } else {
             sleep(Duration::from_millis(100));
             Ok(())
-        }
+        // }
     }
 
     fn send_header(&mut self, pid: PID) -> Result<(), SerialError> {
         self.0.set_timeout(Duration::from_millis(1000))?;
 
-        self.0.reconfigure(&|settings| {
-            settings.set_baud_rate(serial::Baud9600)?;
-            settings.set_char_size(serial::Bits7);
-            settings.set_parity(serial::ParityNone);
-            settings.set_stop_bits(serial::Stop1);
-            settings.set_flow_control(serial::FlowNone);
-            Ok(())
-        })?;
-
-        self.0.write_all(&[0])?;
-        // wait a short time before switching baudrate again, otherwise the zero byte won't be sent
-        // with the lower baudrate
-        sleep(Duration::from_millis(1));
-
-        self.0.reconfigure(&|settings| {
-            settings.set_baud_rate(serial::Baud19200)?;
-            settings.set_char_size(serial::Bits8);
-            settings.set_parity(serial::ParityNone);
-            settings.set_stop_bits(serial::Stop1);
-            settings.set_flow_control(serial::FlowNone);
-            Ok(())
-        })?;
+        self.send_break()?;
 
         self.0.write_all(&[0x55, pid.get()])?;
 
-        let mut buf = [0; 2];
-        self.0.read_exact(&mut buf)?;
+        // let mut buf = [0; 2];
+        // self.0.read_exact(&mut buf)?;
 
-        if buf != [0x55, pid.get()] {
-            Err(SerialError::LinError(driver::Error::PhysicalBus))
-        } else {
+        // if buf != [0x55, pid.get()] {
+        //     Err(SerialError::LinError(driver::Error::PhysicalBus))
+        // } else {
             Ok(())
-        }
+        // }
     }
 
     fn read(&mut self, buf: &mut [u8]) -> Result<(), SerialError> {
@@ -121,12 +135,12 @@ impl driver::Master for SerialLin {
         );
         self.0.write_all(data)?;
         let mut buf = [0; 9];
-        self.0.read_exact(&mut buf[0..data.len()])?;
-        if &buf[0..data.len()] != data {
-            Err(SerialError::LinError(driver::Error::PhysicalBus))
-        } else {
+        // self.0.read_exact(&mut buf[0..data.len()])?;
+        // if &buf[0..data.len()] != data {
+        //     Err(SerialError::LinError(driver::Error::PhysicalBus))
+        // } else {
             Ok(())
-        }
+        // }
     }
 }
 
